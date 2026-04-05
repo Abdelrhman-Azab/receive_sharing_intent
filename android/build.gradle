@@ -6,14 +6,14 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.3.1'
+        classpath 'com.android.tools.build:gradle:8.5.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
 
 plugins {
     id "com.android.library"
-    id "kotlin-android"
+    id "org.jetbrains.kotlin.android"
 }
 
 group 'com.kasem.receive_sharing_intent'
@@ -27,28 +27,26 @@ rootProject.allprojects {
 }
 
 android {
-    if (project.android.hasProperty("namespace")) {
-        namespace 'com.kasem.receive_sharing_intent'
-    }
+    namespace 'com.kasem.receive_sharing_intent'
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = '21'
+        jvmTarget = '17'
     }
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
     }
     defaultConfig {
-        compileSdk 34
-        minSdkVersion 19
+        compileSdk 35
+        minSdk 21
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
-    lintOptions {
+    lint {
         disable 'InvalidPackage'
     }
 }

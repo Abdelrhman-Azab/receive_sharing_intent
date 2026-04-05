@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import Photos
+import UniformTypeIdentifiers
 
 public let kSchemePrefix = "ShareMedia"
 public let kUserDefaultsKey = "ShareKey"
@@ -27,8 +28,12 @@ public class SwiftReceiveSharingIntentPlugin: NSObject, FlutterPlugin, FlutterSt
         
         let chargingChannelMedia = FlutterEventChannel(name: kEventsChannelMedia, binaryMessenger: registrar.messenger())
         chargingChannelMedia.setStreamHandler(instance)
-        
-        registrar.addApplicationDelegate(instance)
+
+        let selector = NSSelectorFromString("addApplicationDelegate:")
+        let registrarObject = registrar as AnyObject
+        if registrarObject.responds(to: selector) {
+            _ = registrarObject.perform(selector, with: instance)
+        }
     }
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -110,8 +115,11 @@ public class SwiftReceiveSharingIntentPlugin: NSObject, FlutterPlugin, FlutterSt
     }
     
     private func handleUrl(url: URL?, setInitialData: Bool) -> Bool {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
+            return false
+        }
         let appGroupId = Bundle.main.object(forInfoDictionaryKey: kAppGroupIdKey) as? String
-        let defaultGroupId = "group.\(Bundle.main.bundleIdentifier!)"
+        let defaultGroupId = "group.\(bundleIdentifier)"
         let userDefaults = UserDefaults(suiteName: appGroupId ?? defaultGroupId)
         
         let message = userDefaults?.string(forKey: kUserDefaultsMessageKey)
@@ -189,7 +197,7 @@ public class SwiftReceiveSharingIntentPlugin: NSObject, FlutterPlugin, FlutterSt
     
     private func decode(data: Data) -> [SharedMediaFile] {
         let encodedData = try? JSONDecoder().decode([SharedMediaFile].self, from: data)
-        return encodedData!
+        return encodedData ?? []
     }
     
     private func toJson(data: [SharedMediaFile]?) -> String? {
@@ -197,7 +205,9 @@ public class SwiftReceiveSharingIntentPlugin: NSObject, FlutterPlugin, FlutterSt
             return nil
         }
         let encodedData = try? JSONEncoder().encode(data)
-        let json = String(data: encodedData!, encoding: .utf8)!
+        guard let encodedData, let json = String(data: encodedData, encoding: .utf8) else {
+            return nil
+        }
         return json
     }
 }

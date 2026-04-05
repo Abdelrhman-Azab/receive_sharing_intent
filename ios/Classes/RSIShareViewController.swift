@@ -9,6 +9,8 @@ import UIKit
 import Social
 import MobileCoreServices
 import Photos
+import AVFoundation
+import UniformTypeIdentifiers
 
 @available(swift, introduced: 5.0)
 open class RSIShareViewController: SLComposeServiceViewController {
@@ -40,51 +42,51 @@ open class RSIShareViewController: SLComposeServiceViewController {
     
     open override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
-        // This is called after the user selects Post. Do the upload of contentText and/or NSExtensionContext attachments.
-        if let content = extensionContext!.inputItems[0] as? NSExtensionItem {
-            if let contents = content.attachments {
-                for (index, attachment) in (contents).enumerated() {
-                    for type in SharedMediaType.allCases {
-                        if attachment.hasItemConformingToTypeIdentifier(type.toUTTypeIdentifier) {
-                            attachment.loadItem(forTypeIdentifier: type.toUTTypeIdentifier) { [weak self] data, error in
-                                guard let this = self, error == nil else {
-                                    self?.dismissWithError()
-                                    return
-                                }
-                                switch type {
-                                case .text:
-                                    if let text = data as? String {
-                                        this.handleMedia(forLiteral: text,
-                                                         type: type,
-                                                         index: index,
-                                                         content: content)
-                                    }
-                                case .url:
-                                    if let url = data as? URL {
-                                        this.handleMedia(forLiteral: url.absoluteString,
-                                                         type: type,
-                                                         index: index,
-                                                         content: content)
-                                    }
-                                default:
-                                    if let url = data as? URL {
-                                        this.handleMedia(forFile: url,
-                                                         type: type,
-                                                         index: index,
-                                                         content: content)
-                                    }
-                                    else if let image = data as? UIImage {
-                                        this.handleMedia(forUIImage: image,
-                                                         type: type,
-                                                         index: index,
-                                                         content: content)
-                                    }
-                                }
+        guard let extensionContext,
+              let content = extensionContext.inputItems.first as? NSExtensionItem,
+              let contents = content.attachments else {
+            dismissWithError()
+            return
+        }
+
+        for (index, attachment) in contents.enumerated() {
+            for type in SharedMediaType.allCases {
+                if attachment.hasItemConformingToTypeIdentifier(type.toUTTypeIdentifier) {
+                    attachment.loadItem(forTypeIdentifier: type.toUTTypeIdentifier) { [weak self] data, error in
+                        guard let this = self, error == nil else {
+                            self?.dismissWithError()
+                            return
+                        }
+                        switch type {
+                        case .text:
+                            if let text = data as? String {
+                                this.handleMedia(forLiteral: text,
+                                                 type: type,
+                                                 index: index,
+                                                 content: content)
                             }
-                            break
+                        case .url:
+                            if let url = data as? URL {
+                                this.handleMedia(forLiteral: url.absoluteString,
+                                                 type: type,
+                                                 index: index,
+                                                 content: content)
+                            }
+                        default:
+                            if let url = data as? URL {
+                                this.handleMedia(forFile: url,
+                                                 type: type,
+                                                 index: index,
+                                                 content: content)
+                            } else if let image = data as? UIImage {
+                                this.handleMedia(forUIImage: image,
+                                                 type: type,
+                                                 index: index,
+                                                 content: content)
+                            }
                         }
                     }
+                    break
                 }
             }
         }
@@ -96,21 +98,13 @@ open class RSIShareViewController: SLComposeServiceViewController {
     }
     
     private func loadIds() {
-        // loading Share extension App Id
-        let shareExtensionAppBundleIdentifier = Bundle.main.bundleIdentifier!
-        
-        
-        // extract host app bundle id from ShareExtension id
-        // by default it's <hostAppBundleIdentifier>.<ShareExtension>
-        // for example: "com.kasem.sharing.Share-Extension" -> com.kasem.sharing
-        let lastIndexOfPoint = shareExtensionAppBundleIdentifier.lastIndex(of: ".")
-        hostAppBundleIdentifier = String(shareExtensionAppBundleIdentifier[..<lastIndexOfPoint!])
+        guard let shareExtensionAppBundleIdentifier = Bundle.main.bundleIdentifier,
+              let lastIndexOfPoint = shareExtensionAppBundleIdentifier.lastIndex(of: ".") else {
+            return
+        }
+        hostAppBundleIdentifier = String(shareExtensionAppBundleIdentifier[..<lastIndexOfPoint])
         let defaultAppGroupId = "group.\(hostAppBundleIdentifier)"
-        
-        
-        // loading custom AppGroupId from Build Settings or use group.<hostAppBundleIdentifier>
         let customAppGroupId = Bundle.main.object(forInfoDictionaryKey: kAppGroupIdKey) as? String
-        
         appGroupId = customAppGroupId ?? defaultAppGroupId
     }
     
@@ -129,9 +123,13 @@ open class RSIShareViewController: SLComposeServiceViewController {
     }
 
     private func handleMedia(forUIImage image: UIImage, type: SharedMediaType, index: Int, content: NSExtensionItem){
-        let tempPath = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)!.appendingPathComponent("TempImage.png")
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+            dismissWithError()
+            return
+        }
+        let tempPath = containerURL.appendingPathComponent("TempImage.png")
         if self.writeTempFile(image, to: tempPath) {
-            let newPathDecoded = tempPath.absoluteString.removingPercentEncoding!
+            let newPathDecoded = tempPath.absoluteString.removingPercentEncoding ?? tempPath.path
             sharedMedia.append(SharedMediaFile(
                 path: newPathDecoded,
                 mimeType: type == .image ? "image/png": nil,
@@ -146,12 +144,16 @@ open class RSIShareViewController: SLComposeServiceViewController {
     }
     
     private func handleMedia(forFile url: URL, type: SharedMediaType, index: Int, content: NSExtensionItem) {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+            dismissWithError()
+            return
+        }
         let fileName = getFileName(from: url, type: type)
-        let newPath = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId)!.appendingPathComponent(fileName)
+        let newPath = containerURL.appendingPathComponent(fileName)
         
         if copyFile(at: url, to: newPath) {
             // The path should be decoded because Flutter is not expecting url encoded file names
-            let newPathDecoded = newPath.absoluteString.removingPercentEncoding!;
+            let newPathDecoded = newPath.absoluteString.removingPercentEncoding ?? newPath.path
             if type == .video {
                 // Get video thumbnail and duration
                 if let videoInfo = getVideoInfo(from: url) {
@@ -191,30 +193,14 @@ open class RSIShareViewController: SLComposeServiceViewController {
     }
     
     private func redirectToHostApp() {
-        // ids may not loaded yet so we need loadIds here too
         loadIds()
-        let url = URL(string: "\(kSchemePrefix)-\(hostAppBundleIdentifier):share")
-        var responder = self as UIResponder?
-        
-        if #available(iOS 18.0, *) {
-            while responder != nil {
-                if let application = responder as? UIApplication {
-                    application.open(url!, options: [:], completionHandler: nil)
-                }
-                responder = responder?.next
-            }
-        } else {
-            let selectorOpenURL = sel_registerName("openURL:")
-            
-            while (responder != nil) {
-                if (responder?.responds(to: selectorOpenURL))! {
-                    _ = responder?.perform(selectorOpenURL, with: url)
-                }
-                responder = responder!.next
-            }
+        guard let url = URL(string: "\(kSchemePrefix)-\(hostAppBundleIdentifier):share") else {
+            extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+            return
         }
-
-        extensionContext!.completeRequest(returningItems: [], completionHandler: nil)
+        extensionContext?.open(url) { [weak self] _ in
+            self?.extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
+        }
     }
     
     private func dismissWithError() {
@@ -227,7 +213,7 @@ open class RSIShareViewController: SLComposeServiceViewController {
         
         alert.addAction(action)
         present(alert, animated: true, completion: nil)
-        extensionContext!.completeRequest(returningItems: [], completionHandler: nil)
+        extensionContext?.completeRequest(returningItems: [], completionHandler: nil)
     }
     
     private func getFileName(from url: URL, type: SharedMediaType) -> String {
@@ -277,7 +263,9 @@ open class RSIShareViewController: SLComposeServiceViewController {
     private func getVideoInfo(from url: URL) -> (thumbnail: String?, duration: Double)? {
         let asset = AVAsset(url: url)
         let duration = (CMTimeGetSeconds(asset.duration) * 1000).rounded()
-        let thumbnailPath = getThumbnailPath(for: url)
+        guard let thumbnailPath = getThumbnailPath(for: url) else {
+            return nil
+        }
         
         if FileManager.default.fileExists(atPath: thumbnailPath.path) {
             return (thumbnail: thumbnailPath.absoluteString, duration: duration)
@@ -299,17 +287,18 @@ open class RSIShareViewController: SLComposeServiceViewController {
         return saved ? (thumbnail: thumbnailPath.absoluteString, duration: duration): nil
     }
     
-    private func getThumbnailPath(for url: URL) -> URL {
+    private func getThumbnailPath(for url: URL) -> URL? {
         let fileName = Data(url.lastPathComponent.utf8).base64EncodedString().replacingOccurrences(of: "==", with: "")
-        let path = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: appGroupId)!
-            .appendingPathComponent("\(fileName).jpg")
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupId) else {
+            return nil
+        }
+        let path = containerURL.appendingPathComponent("\(fileName).jpg")
         return path
     }
     
     private func toData(data: [SharedMediaFile]) -> Data {
         let encodedData = try? JSONEncoder().encode(data)
-        return encodedData!
+        return encodedData ?? Data()
     }
 }
 

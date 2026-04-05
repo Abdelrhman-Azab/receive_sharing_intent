@@ -1,4 +1,5 @@
 #import "ReceiveSharingIntentPlugin.h"
+#if __has_include(<Flutter/Flutter.h>)
 #if __has_include(<receive_sharing_intent/receive_sharing_intent-Swift.h>)
 #import <receive_sharing_intent/receive_sharing_intent-Swift.h>
 #else
@@ -10,3 +11,7 @@
   [SwiftReceiveSharingIntentPlugin registerWithRegistrar:registrar];
 }
 @end
+#else
+@implementation ReceiveSharingIntentPlugin
+@end
+#endif
