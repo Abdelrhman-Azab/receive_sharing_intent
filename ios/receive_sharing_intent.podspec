@@ -15,7 +15,7 @@ A flutter plugin that enables flutter apps to receive sharing photos from other 
   s.source_files = 'Classes/**/*'
   s.public_header_files = 'Classes/**/*.h'
   s.dependency 'Flutter'
-
-  s.ios.deployment_target = '12.0'
+  s.user_target_xcconfig = { 'SWIFT_ENABLE_EXPLICIT_MODULES' => 'NO' }
+  s.ios.deployment_target = '15.0'
 end
 
